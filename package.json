@@ -1,0 +1,17 @@
+{
+  "name": "caddy-azure-infra",
+  "version": "1.0.0",
+  "description": "Deploy containerized workloads to Azure VMSS using Pulumi",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^20"
+  },
+  "dependencies": {
+    "@pulumi/azure-native": "^2.0.0",
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/tls": "^5.2.3"
+  }
+}

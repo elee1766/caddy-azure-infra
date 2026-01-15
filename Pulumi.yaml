@@ -1,0 +1,7 @@
+name: caddy-azure-infra
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+main: src/
+description: Deploy containerized workloads to Azure VMSS

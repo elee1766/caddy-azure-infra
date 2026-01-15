@@ -1,0 +1,12 @@
+config:
+  azure-native:location: westus2
+  caddy-azure-infra:vmSize: Standard_D2s_v3
+  caddy-azure-infra:instanceCount: "2"
+  caddy-azure-infra:adminUsername: azureuser
+  caddy-azure-infra:containerPort: "80"
+  caddy-azure-infra:dockerUsername:
+    secure: v1:EE9KuJNxoRe8d+9o:x/cuX0O+N6UQdom49n/9HYKBCe6o0d+p
+  caddy-azure-infra:dockerPassword:
+    secure: v1:BiqpnboM2J2OyAvH:WcxAEr5gGSFSFLMYrNq1xbGR/LPg+K/AyZuaNu6dsRS4SaGGtJiKWFEcaaBtYqKIB6xhKBlnnO0=
+  caddy-azure-infra:containerImage: ghcr.io/caddyserver/buildworker:master
+encryptionsalt: v1:8NxyYpTLV6o=:v1:cW18xfOoQWVtM040:pMNzco07J1MF38TDvwWLWQ2Z2QPeUw==
