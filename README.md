@@ -16,6 +16,8 @@ Create a `.env` file:
 export AZURE_STORAGE_ACCOUNT="your-storage-account"
 export AZURE_STORAGE_KEY="your-storage-key"
 export PULUMI_CONFIG_PASSPHRASE=""
+export BASIC_AUTH_USERNAME="caddy"
+export BASIC_AUTH_PASSWORD="your-basic-auth-password"
 ```
 
 Then source it:
