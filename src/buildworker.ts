@@ -4,10 +4,13 @@ import * as resources from "@pulumi/azure-native/resources";
 import * as network from "@pulumi/azure-native/network";
 import * as compute from "@pulumi/azure-native/compute";
 
+import { buildCloudInit } from "./cloudinit";
+
 export interface BuildWorkerConfig {
     containerImage?: string;
     dockerUsername?: pulumi.Output<string>;
     dockerPassword?: pulumi.Output<string>;
+    hostname?: string;
 }
 
 export interface BuildWorkerOutputs {
@@ -15,7 +18,6 @@ export interface BuildWorkerOutputs {
     publicIpAddress: pulumi.Output<string | undefined>;
     vmName: pulumi.Output<string>;
     url: pulumi.Output<string>;
-    sslipUrl: pulumi.Output<string>;
     sshPrivateKey: pulumi.Output<string>;
 }
 
@@ -27,6 +29,15 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     }
     const dockerUsername = config.dockerUsername || pulumi.output("");
     const dockerPassword = config.dockerPassword || pulumi.output("");
+    const hostname = config.hostname || "worker-0";
+    const dnsZoneName = "infra.caddyserver.com";
+    const dnsZoneResourceGroup = "caddy-rgaaa33a6a";
+
+    // Look up existing DNS zone (managed outside this stack)
+    const dnsZone = network.getZoneOutput({
+        zoneName: dnsZoneName,
+        resourceGroupName: dnsZoneResourceGroup,
+    });
 
     // Resource Group
     const resourceGroup = new resources.ResourceGroup("caddy-rg");
@@ -38,81 +49,34 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
         sku: { name: "Standard" },
     });
 
-    const sslipDomain = pulumi.interpolate`${publicIp.ipAddress}.sslip.io`;
+    const dnsDomain = `${hostname}.${dnsZoneName}`;
 
-    // Cloud-init script to install Docker and run Caddy with HTTPS via sslip.io
-    const cloudInit = pulumi.interpolate`#cloud-config
-package_update: true
-package_upgrade: true
-packages:
-  - apt-transport-https
-  - ca-certificates
-  - curl
-  - gnupg
-  - lsb-release
+    // DNS A record pointing to the VM's public IP
+    const dnsRecord = new network.RecordSet("caddy-dns-record", {
+        zoneName: dnsZoneName,
+        resourceGroupName: dnsZoneResourceGroup,
+        relativeRecordSetName: hostname,
+        recordType: "A",
+        ttl: 300,
+        aRecords: [{
+            ipv4Address: publicIp.ipAddress.apply(ip => ip || ""),
+        }],
+    });
 
-write_files:
-  - path: /etc/caddy/config.json
-    permissions: '0644'
-    content: |
-      {
-        "apps": {
-          "http": {
-            "servers": {
-              "srv0": {
-                "listen": [":443"],
-                "routes": [
-                  {
-                    "match": [{"host": ["${sslipDomain}"]}],
-                    "handle": [{
-                      "handler": "subroute",
-                      "routes": [
-                        {
-                          "handle": [{
-                            "handler": "authentication",
-                            "providers": {
-                              "http_basic": {
-                                "accounts": [{
-                                  "username": "caddy",
-                                  "password": "$2a$14$alkJaDk17ojdhBWhAZdBRukqJVCT6zRXHW9GFyfFyx5Zze2RV3B/q"
-                                }],
-                                "hash": {"algorithm": "bcrypt"}
-                              }
-                            }
-                          }]
-                        },
-                        {
-                          "handle": [{
-                            "handler": "caddy_builder",
-                            "purge_module_cache": true
-                          }]
-                        }
-                      ]
-                    }],
-                    "terminal": true
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
+    // Extract registry hostname from the container image (e.g. "ghcr.io" from "ghcr.io/org/image:tag")
+    const dockerRegistry = containerImage.includes("/")
+        ? containerImage.split("/")[0]
+        : "";
 
-runcmd:
-  - mkdir -p /data/caddy
-  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-  - apt-get update
-  - apt-get install -y docker-ce docker-ce-cli containerd.io
-  - systemctl enable docker
-  - systemctl start docker
-  - |
-    if [ -n "${dockerUsername}" ] && [ -n "${dockerPassword}" ]; then
-      echo "${dockerPassword}" | docker login -u "${dockerUsername}" --password-stdin
-    fi
-  - docker pull ${containerImage}
-  - docker run -d --restart=always --name caddy -p 80:80 -p 443:443 -v /etc/caddy/config.json:/etc/caddy/config.json:ro -v /data/caddy:/data ${containerImage} caddy run --config /etc/caddy/config.json
-`;
+    // Cloud-init script to install Docker and run Caddy with HTTPS
+    const cloudInit = buildCloudInit({
+        domain: dnsDomain,
+        containerImage,
+        dockerRegistry,
+        dockerUsername,
+        dockerPassword,
+        basicAuthHash: "$2a$14$alkJaDk17ojdhBWhAZdBRukqJVCT6zRXHW9GFyfFyx5Zze2RV3B/q",
+    });
 
     // Virtual Network
     const vnet = new network.VirtualNetwork("caddy-vnet", {
@@ -246,8 +210,7 @@ runcmd:
         resourceGroupName: resourceGroup.name,
         publicIpAddress: publicIp.ipAddress,
         vmName: vm.name,
-        url: pulumi.interpolate`https://${publicIp.ipAddress}.sslip.io`,
-        sslipUrl: pulumi.interpolate`https://${publicIp.ipAddress}.sslip.io`,
+        url: pulumi.interpolate`https://${dnsDomain}`,
         sshPrivateKey: sshKey.privateKeyOpenssh,
     };
 }
