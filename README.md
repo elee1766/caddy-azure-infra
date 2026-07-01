@@ -2,6 +2,39 @@
 
 Deploy the Caddy build worker to Azure using Pulumi.
 
+## Architecture
+
+A single Azure VM (`Standard_B4s_v2`) runs the
+[buildworker](https://github.com/caddyserver/buildworker) container, which
+compiles custom Caddy binaries on demand. The VM is provisioned via cloud-init
+which installs Docker and Go, pulls the buildworker container image, and starts
+Caddy with a JSON config.
+
+### Resources
+
+- **Resource Group** - contains all Azure resources
+- **Virtual Network / Subnet** (`10.0.0.0/16`, `10.0.1.0/24`)
+- **Network Security Group** - allows ICMP, HTTP (80), HTTPS (443), SSH (22)
+- **Static Public IP** - assigned to the VM
+- **DNS A Record** - `worker-0.infra.caddyserver.com` pointing to the public IP
+  (zone managed in `caddy-rgaaa33a6a`)
+- **Ubuntu 24.04 VM** - runs the buildworker Docker container
+
+### How it works
+
+1. Caddy listens on `:443` with automatic HTTPS (Let's Encrypt)
+2. All requests require HTTP basic auth (username: `caddy`, bcrypt-hashed password)
+3. Clients POST a JSON build config (OS, arch, plugins) to the worker
+4. The worker compiles a custom Caddy binary using `xcaddy` and returns it as a
+   multipart response
+5. Go is installed on the host and volume-mounted into the container
+
+### Endpoint
+
+- **URL:** `https://worker-0.infra.caddyserver.com`
+- **Auth:** HTTP basic (`caddy` / password from `.env`)
+- **Health check:** `GET /health` (no auth required)
+
 ## Prerequisites
 
 - Node.js 18+
