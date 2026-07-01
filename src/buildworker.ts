@@ -11,6 +11,8 @@ export interface BuildWorkerConfig {
     dockerUsername?: pulumi.Output<string>;
     dockerPassword?: pulumi.Output<string>;
     hostname?: string;
+    sshKey: tls.PrivateKey;
+    dependsOn?: pulumi.Resource;
 }
 
 export interface BuildWorkerOutputs {
@@ -18,7 +20,7 @@ export interface BuildWorkerOutputs {
     publicIpAddress: pulumi.Output<string | undefined>;
     vmName: pulumi.Output<string>;
     url: pulumi.Output<string>;
-    sshPrivateKey: pulumi.Output<string>;
+    vm: compute.VirtualMachine;
 }
 
 export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs {
@@ -32,6 +34,8 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     const hostname = config.hostname || "worker-0";
     const dnsZoneName = "infra.caddyserver.com";
     const dnsZoneResourceGroup = "caddy-rgaaa33a6a";
+    // worker-0 keeps the original "caddy-" prefix for backward compatibility
+    const prefix = hostname === "worker-0" ? "caddy" : `caddy-${hostname}`;
 
     // Look up existing DNS zone (managed outside this stack)
     const dnsZone = network.getZoneOutput({
@@ -40,10 +44,12 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     });
 
     // Resource Group
-    const resourceGroup = new resources.ResourceGroup("caddy-rg");
+    const resourceGroup = new resources.ResourceGroup(`${prefix}-rg`, {}, config.dependsOn ? {
+        dependsOn: [config.dependsOn],
+    } : undefined);
 
     // Static Public IP - created first so we know the IP for the config
-    const publicIp = new network.PublicIPAddress("caddy-pip", {
+    const publicIp = new network.PublicIPAddress(`${prefix}-pip`, {
         resourceGroupName: resourceGroup.name,
         publicIPAllocationMethod: "Static",
         sku: { name: "Standard" },
@@ -52,7 +58,7 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     const dnsDomain = `${hostname}.${dnsZoneName}`;
 
     // DNS A record pointing to the VM's public IP
-    const dnsRecord = new network.RecordSet("caddy-dns-record", {
+    const dnsRecord = new network.RecordSet(`${prefix}-dns-record`, {
         zoneName: dnsZoneName,
         resourceGroupName: dnsZoneResourceGroup,
         relativeRecordSetName: hostname,
@@ -79,7 +85,7 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     });
 
     // Virtual Network
-    const vnet = new network.VirtualNetwork("caddy-vnet", {
+    const vnet = new network.VirtualNetwork(`${prefix}-vnet`, {
         resourceGroupName: resourceGroup.name,
         addressSpace: {
             addressPrefixes: ["10.0.0.0/16"],
@@ -87,14 +93,14 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     });
 
     // Subnet
-    const subnet = new network.Subnet("caddy-subnet", {
+    const subnet = new network.Subnet(`${prefix}-subnet`, {
         resourceGroupName: resourceGroup.name,
         virtualNetworkName: vnet.name,
         addressPrefix: "10.0.1.0/24",
     });
 
     // Network Security Group
-    const nsg = new network.NetworkSecurityGroup("caddy-nsg", {
+    const nsg = new network.NetworkSecurityGroup(`${prefix}-nsg`, {
         resourceGroupName: resourceGroup.name,
         securityRules: [
             {
@@ -145,7 +151,7 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
     });
 
     // Network Interface
-    const nic = new network.NetworkInterface("caddy-nic", {
+    const nic = new network.NetworkInterface(`${prefix}-nic`, {
         resourceGroupName: resourceGroup.name,
         networkSecurityGroup: { id: nsg.id },
         ipConfigurations: [{
@@ -155,13 +161,10 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
         }],
     });
 
-    // Generate SSH key pair for VM (SSH is blocked by NSG, but Azure requires auth)
-    const sshKey = new tls.PrivateKey("caddy-ssh-key", {
-        algorithm: "ED25519",
-    });
+    const sshKey = config.sshKey;
 
     // Virtual Machine
-    const vm = new compute.VirtualMachine("caddy-vm", {
+    const vm = new compute.VirtualMachine(`${prefix}-vm`, {
         resourceGroupName: resourceGroup.name,
         hardwareProfile: {
             vmSize: vmSize,
@@ -211,6 +214,6 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
         publicIpAddress: publicIp.ipAddress,
         vmName: vm.name,
         url: pulumi.interpolate`https://${dnsDomain}`,
-        sshPrivateKey: sshKey.privateKeyOpenssh,
+        vm,
     };
 }
