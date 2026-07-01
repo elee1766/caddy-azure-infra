@@ -13,7 +13,7 @@ Deploy the Caddy build worker to Azure using Pulumi.
 Create a `.env` file:
 
 ```bash
-export AZURE_STORAGE_ACCOUNT="your-storage-account"
+export AZURE_STORAGE_ACCOUNT="pulumi-state-0"
 export AZURE_STORAGE_KEY="your-storage-key"
 export PULUMI_CONFIG_PASSPHRASE=""
 export BASIC_AUTH_USERNAME="caddy"
@@ -25,6 +25,7 @@ Then source it:
 ```bash
 source .env
 pulumi login azblob://pulumi
+pulumi stack select dev
 ```
 
 ## Configuration

@@ -75,7 +75,7 @@ export function createBuildWorker(config: BuildWorkerConfig): BuildWorkerOutputs
         dockerRegistry,
         dockerUsername,
         dockerPassword,
-        basicAuthHash: "$2a$14$alkJaDk17ojdhBWhAZdBRukqJVCT6zRXHW9GFyfFyx5Zze2RV3B/q",
+        basicAuthHash: "$2a$14$yzPnIig.3eq2chk1pyFe2OC4tO1gVtv3M.izeOaXHuzJaequyV59K",
     });
 
     // Virtual Network

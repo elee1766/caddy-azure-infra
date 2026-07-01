@@ -12,12 +12,28 @@ export interface CloudInitConfig {
 // Build the Caddy JSON config for the build worker
 function buildCaddyConfig(config: CloudInitConfig): string {
     return JSON.stringify({
+        logging: {
+            logs: {
+                default: {
+                    level: "DEBUG",
+                },
+            },
+        },
         apps: {
             http: {
                 servers: {
                     srv0: {
                         listen: [":443"],
                         routes: [
+                            {
+                                match: [{ host: [config.domain], path: ["/health"] }],
+                                handle: [{
+                                    handler: "static_response",
+                                    status_code: 200,
+                                    body: "OK\n",
+                                }],
+                                terminal: true,
+                            },
                             {
                                 match: [{ host: [config.domain] }],
                                 handle: [{
@@ -94,7 +110,7 @@ runcmd:
     if [ -n "${config.dockerUsername}" ] && [ -n "${config.dockerPassword}" ]; then
       echo "${config.dockerPassword}" | docker login ${config.dockerRegistry} -u "${config.dockerUsername}" --password-stdin
     fi
-  - curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+  - curl -fsSL https://go.dev/dl/go1.26.4.linux-amd64.tar.gz | tar -C /usr/local -xz
   - docker pull ${config.containerImage}
   - docker run -d --restart=always --name caddy -p 80:80 -p 443:443 -v /etc/caddy/config.json:/etc/caddy/config.json:ro -v /data/caddy:/data -v /usr/local/go:/usr/local/go -e PATH="/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" ${config.containerImage} caddy run --config /etc/caddy/config.json
 `;
